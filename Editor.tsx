@@ -1,5 +1,5 @@
 import { Asset } from "expo-asset";
-import React from "react";
+import React, { useEffect, useImperativeHandle, forwardRef } from "react";
 import { StyleSheet, StyleProp, ViewStyle } from "react-native";
 import { WebView } from "react-native-webview";
 
@@ -16,78 +16,64 @@ const styles = StyleSheet.create({
 });
 
 interface EditorProps {
-  /**
-   * CSS to apply to the HTML content inside the editor.
-   *
-   * https://www.tiny.cloud/docs/configure/content-appearance/#content_style
-   */
   contentCss?: string;
-
-  /**
-   * Placeholder text to show in the field.
-   */
   placeholder?: string;
-
-  /**
-   * Styles to apply to the web view.
-   */
   style?: StyleProp<ViewStyle>;
-
-  /**
-   * Initial HTML content for the editor.
-   */
   value?: string;
 }
 
-export default class Editor extends React.Component<EditorProps> {
-  declare context: React.ContextType<typeof EditorContext>;
-  static contextType = EditorContext;
+const Editor = forwardRef<WebView, EditorProps>((props, ref) => {
+  const context = React.useContext(EditorContext);
 
-  static defaultProps: EditorProps = {
-    contentCss: "body { font-family: sans-serif; }",
-    style: null,
-  };
+  console.log("----------- value :", value);
 
-  componentDidUpdate(prevProps) {
-    if (prevProps.value !== this.props.value) {
-      this.context.onUpdateContent(this.props.value);
+  useEffect(() => {
+    if (props.value !== context.state.value) {
+      context.onUpdateContent(props.value);
     }
-  }
+  }, [props.value]);
 
-  protected getInitScript() {
+  useImperativeHandle(ref, () => ({
+    getContent: async () => {
+      return await context.getContent();
+    },
+  }));
+
+  const getInitScript = () => {
     const config = {
-      content: this.props.value,
-      content_style: this.props.contentCss,
-      placeholder: this.props.placeholder || null,
+      content: props.value,
+      content_style: props.contentCss,
+      placeholder: props.placeholder || null,
     };
 
     return `
-			// Initialize the editor.
-			const initConfig = ${JSON.stringify(config)};
-			window.init( initConfig );
+      // Initialize the editor.
+      const initConfig = ${JSON.stringify(config)};
+      window.init(initConfig);
 
-			// Ensure string evaluates to true.
-			true;
-		`;
-  }
+      // Ensure string evaluates to true.
+      true;
+    `;
+  };
 
-  public async getContent(): Promise<string> {
-    return await this.context.getContent();
-  }
+  return (
+    <WebView
+      ref={context.setWebViewRef}
+      hideKeyboardAccessoryView={true}
+      injectedJavaScript={getInitScript()}
+      // keyboardDisplayRequiresUserAction={false}
+      originWhitelist={["*"]}
+      scrollEnabled={false}
+      source={{ uri: editorUri }}
+      style={StyleSheet.flatten([styles.webView, props.style])}
+      onMessage={context.onMessage}
+    />
+  );
+});
 
-  render() {
-    return (
-      <WebView
-        ref={this.context.setWebViewRef}
-        hideKeyboardAccessoryView={true}
-        injectedJavaScript={this.getInitScript()}
-        keyboardDisplayRequiresUserAction={false}
-        originWhitelist={["*"]}
-        scrollEnabled={false}
-        source={{ uri: editorUri }}
-        style={StyleSheet.flatten([styles.webView, this.props.style])}
-        onMessage={this.context.onMessage}
-      />
-    );
-  }
-}
+Editor.defaultProps = {
+  contentCss: "body { font-family: sans-serif; }",
+  style: null,
+};
+
+export default Editor;

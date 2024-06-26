@@ -154,6 +154,7 @@ window.init = (config) => {
       editor.on(
         "Undo Redo AddUndo TypingUndo ClearUndos SwitchMode SelectionChange",
         () => {
+          console.log("Listened...");
           status = {
             ...status,
             undo: {

@@ -1,9 +1,8 @@
-import React, { ReactChild } from "react";
-import { EmitterSubscription, Keyboard } from "react-native";
-import { WebViewMessageEvent } from "react-native-webview";
-
+import React, { useState, useEffect, useRef, useContext } from "react";
+import { Keyboard } from "react-native";
 import EditorContext, { defaultValue, ContextValue } from "./Context";
 import { EditorEvent, EditorState } from "./types";
+import { WebViewMessageEvent } from "react-native-webview";
 
 /**
  * Time to debounce a keyboard show event.
@@ -16,118 +15,85 @@ import { EditorEvent, EditorState } from "./types";
  */
 const KEYBOARD_DEBOUNCE = 100;
 
-interface ProviderProps {
-  /**
-   * Render prop for the toolbar.
-   */
-  children: ReactChild;
-}
+const Provider = ({ children }) => {
+  const [state, setState] = useState<EditorState>(defaultValue.state);
+  const webref = useRef(null);
+  const resolveContent = useRef<(content: string) => void>(null);
+  const keyboardTimer = useRef<number | null>(null);
 
-export default class Provider extends React.Component<
-  ProviderProps,
-  EditorState
-> {
-  state: EditorState = defaultValue.state;
-
-  private keyboardShowListener: EmitterSubscription = null;
-  private keyboardHideListener: EmitterSubscription = null;
-  private keyboardTimer: number = null;
-  private resolveContent: (content: string) => void = null;
-  private webref = null;
-
-  componentDidMount() {
-    this.keyboardShowListener = Keyboard.addListener(
+  useEffect(() => {
+    const keyboardShowListener = Keyboard.addListener(
       "keyboardWillShow",
-      this.onKeyboardShow
+      onKeyboardShow
     );
-    this.keyboardHideListener = Keyboard.addListener(
+    const keyboardHideListener = Keyboard.addListener(
       "keyboardDidHide",
-      this.onKeyboardHide
+      onKeyboardHide
     );
-  }
 
-  componentWillUnmount() {
-    this.keyboardShowListener.remove();
-    this.keyboardHideListener.remove();
-  }
+    return () => {
+      keyboardShowListener.remove();
+      keyboardHideListener.remove();
+    };
+  }, []);
 
-  public getContent = async (): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      this.resolveContent = resolve;
+  const getContent = async (): Promise<string> => {
+    return new Promise((resolve) => {
+      resolveContent.current = resolve;
 
-      this.webref.injectJavaScript(`
-				window.ReactNativeWebView.postMessage( JSON.stringify( {
-					type: 'getContent',
-					payload: {
-						html: tinymce.activeEditor.getContent(),
-					},
-				} ) );
-			`);
+      webref.current.injectJavaScript(`
+        window.ReactNativeWebView.postMessage( JSON.stringify( {
+          type: 'getContent',
+          payload: {
+            html: tinymce.activeEditor.getContent(),
+          },
+        } ) );
+      `);
     });
   };
 
-  protected setWebViewRef = (ref) => {
-    this.webref = ref;
+  const setWebViewRef = (ref) => {
+    webref.current = ref;
   };
 
-  /**
-   * Hide the formatting pane, but debounce the event.
-   *
-   * When formatting is applied, TinyMCE internally triggers focus on the
-   * contenteditable element, which triggers the keyboard. We then
-   * hide it as soon as possible via the .blur() call in onCommand.
-   *
-   * By debouncing the event, we leave enough time for TinyMCE to do its
-   * magic. For "real" keyboard events (i.e. user moves cursor or selects
-   * another field), the keyboard takes ~250ms to show anyway, so a slight
-   * delay doesn't have a huge visual impact.
-   *
-   * @see KEYBOARD_DEBOUNCE
-   */
-  protected onKeyboardShow = (e) => {
-    this.keyboardTimer = window.setTimeout(() => {
-      this.keyboardTimer = null;
-      this.onDebouncedKeyboardShow(e);
+  const onKeyboardShow = (e) => {
+    keyboardTimer.current = window.setTimeout(() => {
+      keyboardTimer.current = null;
+      onDebouncedKeyboardShow(e);
     }, KEYBOARD_DEBOUNCE);
   };
 
-  /**
-   * Cancel any keyboard timers if set.
-   */
-  protected onKeyboardHide = (e) => {
-    if (this.keyboardTimer) {
-      window.clearTimeout(this.keyboardTimer);
+  const onKeyboardHide = () => {
+    if (keyboardTimer.current) {
+      window.clearTimeout(keyboardTimer.current);
     }
   };
 
-  /**
-   * Hide the formatting pane if the keyboard is shown.
-   *
-   * @see onKeyboardShow
-   */
-  protected onDebouncedKeyboardShow = (e) => {
-    if (this.state.showingFormat) {
-      this.setState({
+  const onDebouncedKeyboardShow = (e) => {
+    if (state.showingFormat) {
+      setState((prevState) => ({
+        ...prevState,
         showingFormat: false,
-      });
+      }));
     }
   };
 
-  protected onMessage = (event: WebViewMessageEvent) => {
+  const onMessage = (event: WebViewMessageEvent) => {
     const data: EditorEvent = JSON.parse(event.nativeEvent.data);
     switch (data.type) {
       case "updateStatus":
-        this.setState({
+        setState((prevState) => ({
+          ...prevState,
           textStatus: data.payload,
-        });
+        }));
         break;
 
       case "getContent":
-        if (!this.resolveContent) {
+        if (!resolveContent.current) {
           return;
         }
 
-        this.resolveContent(data.payload.html);
+        resolveContent.current(data.payload.html);
         break;
 
       default:
@@ -135,97 +101,117 @@ export default class Provider extends React.Component<
     }
   };
 
-  protected onShowFormat = () => {
-    if (!this.webref) {
+  const onShowFormat = () => {
+    if (!webref.current) {
       return;
     }
 
     // Hide the keyboard.
-    this.webref.injectJavaScript("document.activeElement.blur()");
+    webref.current.injectJavaScript("document.activeElement.blur()");
 
     // Show the formatting tools.
-    this.setState({
+    setState((prevState) => ({
+      ...prevState,
       showingFormat: true,
       showingLink: false,
-    });
+    }));
   };
 
-  protected onDismissToolbar = () => {
-    this.setState({
+  const onDismissToolbar = () => {
+    setState((prevState) => ({
+      ...prevState,
       showingFormat: false,
       showingLink: false,
-    });
+    }));
 
-    this.webref.injectJavaScript(`
-			// Refocus the editor.
-			tinymce.activeEditor.focus();
-		`);
+    webref.current.injectJavaScript(`
+      // Refocus the editor.
+      tinymce.activeEditor.focus();
+    `);
   };
 
-  protected onCommand = (
-    commandId: string,
-    showUI?: boolean,
-    value?: string
-  ) => {
+  const onCommand = (commandId: string, showUI?: boolean, value?: string) => {
     const args = [commandId, showUI, value];
     console.log("--------- onCommand Function value:", args);
-    this.webref.injectJavaScript(`
-			// Execute the command first.
-			// tinymce.activeEditor.execCommand(
-			// 	...${JSON.stringify(args)}
-			// );
+    // tinymce.activeEditor.execCommand("FontSize", false, "24px");
+    webref.current.injectJavaScript(
+      `tinymce.activeEditor.execCommand("FontSize", false, "4px")`
+    );
 
-			// Hide the keyboard again.
-			document.activeElement.focus();
-		`);
+    // webref.current.injectJavaScript(`
+    //   // Execute the command directly in TinyMCE.
+    //   tinymce.activeEditor.execCommand(
+    //     ${JSON.stringify(commandId)},
+    //     ${JSON.stringify(showUI)},
+    //     ${JSON.stringify(value)}
+    //   );
+
+    //   // Hide the keyboard again.
+    //   document.activeElement.blur();
+    // `);
   };
 
-  protected onFormat = (format) => {
-    this.onCommand("mceToggleFormat", false, format);
+  // protected onCommand = (commandId: string, showUI?: boolean, value?: string) => {
+  //   const args = [commandId, showUI, value];
+  //   console.log("--------- onCommand Function value:", args);
+  //   this.webref.injectJavaScript(`
+  //     // Execute the command directly in TinyMCE.
+  //     tinymce.activeEditor.execCommand(
+  //       ${JSON.stringify(commandId)},
+  //       ${JSON.stringify(showUI)},
+  //       ${JSON.stringify(value)}
+  //     );
+
+  //     // Hide the keyboard again.
+  //     document.activeElement.blur();
+  //   `);
+  // };
+
+  const onFormat = (format) => {
+    onCommand("mceToggleFormat", false, format);
   };
 
-  protected onUpdateContent = (content: string) => {
-    if (!this.webref) {
+  const onUpdateContent = (content: string) => {
+    if (!webref.current) {
       return;
     }
 
-    this.webref.injectJavaScript(`
-			tinymce.activeEditor.setContent( ${JSON.stringify(content)} );
-		`);
+    webref.current.injectJavaScript(`
+      tinymce.activeEditor.setContent( ${JSON.stringify(content)} );
+    `);
   };
 
-  protected onShowLink = () => {
-    if (!this.webref) {
+  const onShowLink = () => {
+    if (!webref.current) {
       return;
     }
 
     // Preserve selection.
-    this.webref.injectJavaScript("document.activeElement.blur()");
+    webref.current.injectJavaScript("document.activeElement.blur()");
 
-    this.setState({
+    setState((prevState) => ({
+      ...prevState,
       showingFormat: false,
       showingLink: true,
-    });
+    }));
   };
 
-  render() {
-    const { children } = this.props;
+  const value: ContextValue = {
+    state,
+    getContent,
+    setWebViewRef,
+    onCommand,
+    onDismissToolbar,
+    onFormat,
+    onMessage,
+    onShowFormat,
+    onShowLink,
+    onUpdateContent,
+  };
 
-    const value: ContextValue = {
-      state: this.state,
-      getContent: this.getContent,
-      setWebViewRef: this.setWebViewRef,
-      onCommand: this.onCommand,
-      onDismissToolbar: this.onDismissToolbar,
-      onFormat: this.onFormat,
-      onMessage: this.onMessage,
-      onShowFormat: this.onShowFormat,
-      onShowLink: this.onShowLink,
-      onUpdateContent: this.onUpdateContent,
-    };
+  return (
+    <EditorContext.Provider value={value}>{children}</EditorContext.Provider>
+  );
+};
 
-    return (
-      <EditorContext.Provider value={value}>{children}</EditorContext.Provider>
-    );
-  }
-}
+export default Provider;

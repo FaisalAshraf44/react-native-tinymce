@@ -1,5 +1,5 @@
 import * as Font from "expo-font";
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Button, SafeAreaView, StyleSheet, View } from "react-native";
 
 import Editor from "./Editor";
@@ -17,41 +17,38 @@ const styles = StyleSheet.create({
   },
 });
 
-export default class App extends React.Component {
-  state = {
-    content: "<p>Hello world!</p>",
-    // content: "",
-  };
+const App: React.FC = () => {
+  const [content, setContent] = useState("<p>Hello world!</p>");
+  const editorRef = useRef<Editor>(null);
 
-  editor: Editor = null;
-
-  componentDidMount() {
+  useEffect(() => {
     Font.loadAsync({
       sfsymbols: require("./assets/SFSymbolsFallback.ttf"),
     });
-  }
+  }, []);
 
-  getContent = async () => {
-    const content = await this.editor.getContent();
-    console.log(content);
+  const getContent = async () => {
+    if (editorRef.current) {
+      const content = await editorRef.current.getContent();
+      console.log(content);
+    }
   };
 
-  render() {
-    return (
-      <EditorProvider>
-        <SafeAreaView style={styles.safeArea}>
-          <View style={styles.container}>
-            <Button title="Get Content" onPress={this.getContent} />
-            <Editor
-              ref={(ref) => (this.editor = ref)}
-              placeholder="Start writing…"
-              value={this.state.content}
-            />
+  return (
+    <EditorProvider>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <Button title="Get Content" onPress={getContent} />
+          <Editor
+            ref={editorRef}
+            placeholder="Start writing…"
+            value={content}
+          />
+          <Tools />
+        </View>
+      </SafeAreaView>
+    </EditorProvider>
+  );
+};
 
-            <Tools />
-          </View>
-        </SafeAreaView>
-      </EditorProvider>
-    );
-  }
-}
+export default App;

@@ -1,8 +1,7 @@
 import icons from "@rmccue/sfsymbols";
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
-  LayoutAnimation,
   ScrollView,
   StyleProp,
   StyleSheet,
@@ -94,144 +93,145 @@ interface ToolbarProps {
   onFormat: (type: string) => void;
 }
 
-export default class Toolbar extends React.Component<ToolbarProps> {
-  state = {
-    bottomOffset: new Animated.Value(styles.hidden.bottom),
-  };
+const Toolbar: React.FC<ToolbarProps> = ({
+  status,
+  style,
+  visible,
+  onCommand,
+  onDismiss,
+  onFormat,
+}) => {
+  const [bottomOffset, setBottomOffset] = useState(
+    new Animated.Value(styles.hidden.bottom)
+  );
 
-  componentDidUpdate(prevProps: ToolbarProps) {
-    if (prevProps.visible !== this.props.visible) {
-      Animated.timing(this.state.bottomOffset, {
-        toValue: this.props.visible
-          ? styles.visible.bottom
-          : styles.hidden.bottom,
-        duration: 250,
-      }).start();
-    }
-  }
+  useEffect(() => {
+    Animated.timing(bottomOffset, {
+      toValue: visible ? styles.visible.bottom : styles.hidden.bottom,
+      duration: 250,
+      useNativeDriver: false,
+    }).start();
+  }, [visible]);
 
-  render() {
-    const { status, style, onCommand, onDismiss, onFormat } = this.props;
-    console.log("----- onComand:", status);
+  const combinedStyle = [
+    styles.container,
+    {
+      bottom: bottomOffset,
+    },
+    style,
+  ];
 
-    const combinedStyle = [
-      styles.container,
-      {
-        bottom: this.state.bottomOffset,
-      },
-      style,
-    ];
-
-    return (
-      <Animated.View style={combinedStyle}>
-        <View style={styles.topRow}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            showsVerticalScrollIndicator={false}
-            style={styles.paraType}
-          >
-            <ParagraphFormatButton
-              selected={status.paraType === "h1"}
-              text="Heading"
-              textStyle={{ fontSize: 20, fontWeight: "700" }}
-              onPress={() => onFormat("h1")}
-            />
-            <ParagraphFormatButton
-              selected={status.paraType === "h2"}
-              text="Subheading"
-              textStyle={{ fontSize: 18, fontWeight: "600" }}
-              onPress={() => onFormat("h2")}
-            />
-            <ParagraphFormatButton
-              selected={status.paraType === "p"}
-              text="Body"
-              onPress={() => onFormat("p")}
-            />
-            <ParagraphFormatButton
-              selected={status.paraType === "pre"}
-              text="Monospaced"
-              textStyle={{ fontFamily: "Menlo", fontSize: 14 }}
-              onPress={() => onFormat("pre")}
-            />
-          </ScrollView>
-          <TouchableOpacity style={styles.closer} onPress={onDismiss}>
-            <Icon fallback="X" icon={icons.xmark} style={{ fontSize: 18 }} />
-          </TouchableOpacity>
-        </View>
-        <Group>
+  return (
+    <Animated.View style={combinedStyle}>
+      <View style={styles.topRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          style={styles.paraType}
+        >
+          <ParagraphFormatButton
+            selected={status.paraType === "h1"}
+            text="Heading"
+            textStyle={{ fontSize: 20, fontWeight: "700" }}
+            onPress={() => onFormat("h1")}
+          />
+          <ParagraphFormatButton
+            selected={status.paraType === "h2"}
+            text="Subheading"
+            textStyle={{ fontSize: 18, fontWeight: "600" }}
+            onPress={() => onFormat("h2")}
+          />
+          <ParagraphFormatButton
+            selected={status.paraType === "p"}
+            text="Body"
+            onPress={() => onFormat("p")}
+          />
+          <ParagraphFormatButton
+            selected={status.paraType === "pre"}
+            text="Monospaced"
+            textStyle={{ fontFamily: "Menlo", fontSize: 14 }}
+            onPress={() => onFormat("pre")}
+          />
+        </ScrollView>
+        <TouchableOpacity style={styles.closer} onPress={onDismiss}>
+          <Icon fallback="X" icon={icons.xmark} style={{ fontSize: 18 }} />
+        </TouchableOpacity>
+      </View>
+      <Group>
+        <GroupButton
+          first
+          icon={icons.bold}
+          selected={status.bold}
+          label="Bold"
+          text="B"
+          textStyle={{ fontWeight: "bold" }}
+          onPress={() => onCommand("Bold")}
+        />
+        <GroupButton
+          icon={icons.italic}
+          selected={status.italic}
+          label="Italic"
+          text="I"
+          textStyle={{ fontStyle: "italic" }}
+          onPress={() => onCommand("Italic")}
+        />
+        <GroupButton
+          selected={status.underline}
+          icon={icons.underline}
+          label="Underline"
+          text="U"
+          textStyle={{ textDecorationLine: "underline" }}
+          onPress={() => onCommand("Underline")}
+        />
+        <GroupButton
+          last
+          selected={status.strikethrough}
+          icon={icons.strikethrough}
+          label="Strikethrough"
+          text="S"
+          textStyle={{ textDecorationLine: "line-through" }}
+          onPress={() => onCommand("Strikethrough")}
+        />
+      </Group>
+      <View style={styles.lists}>
+        <Group style={styles.listType}>
           <GroupButton
             first
-            icon={icons.bold}
-            selected={status.bold}
-            label="Bold"
-            text="B"
-            textStyle={{ fontWeight: "bold" }}
-            onPress={() => onCommand("Bold")}
+            label="UL"
+            selected={status.paraType === "ul"}
+            icon={icons["list.bullet"]}
+            text="•"
+            onPress={() => onCommand("InsertUnorderedList")}
           />
           <GroupButton
-            icon={icons.italic}
-            selected={status.italic}
-            label="Italic"
-            text="I"
-            textStyle={{ fontStyle: "italic" }}
-            onPress={() => onCommand("Italic")}
+            selected={status.paraType === "ol"}
+            label="UL"
+            icon={icons["list.number"]}
+            text="1."
+            onPress={() => onCommand("InsertOrderedList")}
           />
+          <GroupButton icon={icons["list.dash"]} last text="UL" />
+        </Group>
+        <Group style={styles.listIndent}>
           <GroupButton
-            selected={status.underline}
-            icon={icons.underline}
-            label="Underline"
-            text="U"
-            textStyle={{ textDecorationLine: "underline" }}
-            onPress={() => onCommand("Underline")}
+            first
+            label="Outdent"
+            icon={icons["decrease.indent"]}
+            text="⇤"
+            onPress={() => onCommand("outdent")}
           />
           <GroupButton
             last
-            selected={status.strikethrough}
-            icon={icons.strikethrough}
-            label="Strikethrough"
-            text="S"
-            textStyle={{ textDecorationLine: "line-through" }}
-            onPress={() => onCommand("Strikethrough")}
+            icon={icons["increase.indent"]}
+            label="Indent"
+            text="⇥"
+            onPress={() => onCommand("indent")}
           />
         </Group>
-        <View style={styles.lists}>
-          <Group style={styles.listType}>
-            <GroupButton
-              first
-              label="UL"
-              selected={status.paraType === "ul"}
-              icon={icons["list.bullet"]}
-              text="•"
-              onPress={() => onCommand("InsertUnorderedList")}
-            />
-            <GroupButton
-              selected={status.paraType === "ol"}
-              label="UL"
-              icon={icons["list.number"]}
-              text="1."
-              onPress={() => onCommand("InsertOrderedList")}
-            />
-            <GroupButton icon={icons["list.dash"]} last text="UL" />
-          </Group>
-          <Group style={styles.listIndent}>
-            <GroupButton
-              first
-              label="Outdent"
-              icon={icons["decrease.indent"]}
-              text="⇤"
-              onPress={() => onCommand("outdent")}
-            />
-            <GroupButton
-              last
-              icon={icons["increase.indent"]}
-              label="Indent"
-              text="⇥"
-              onPress={() => onCommand("indent")}
-            />
-          </Group>
-        </View>
-      </Animated.View>
-    );
-  }
-}
+      </View>
+    </Animated.View>
+  );
+};
+
+export default Toolbar;
